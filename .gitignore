@@ -13,7 +13,8 @@ Info IR
 .travis.yml
 INFO SUELTA.txt
 # platformio.ini
+Tests
 
 # Extra in directories
-lib/LiquidCrystal_I2C/docs
 lib/LiquidCrystal_I2C/examples
+.piolibdeps

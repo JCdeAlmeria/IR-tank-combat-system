@@ -76,6 +76,24 @@ unsigned long startingMillisOfShot = 0;
 //Adjusting sensors parameters
 #define thresholdImpact 270 //Being 0 saturated sensor and 1023 darkness
 
+// IR parameters
+// Header, of a quadruple duration and one space
+// 0: one pulse and one space
+// 1: one double pulse (double duration) and one space
+#define timeOfPulse 600 // Time in microseconds of each signal pulse
+#define space 600 // Time in microseconds between pulses
+
+// For the carrying frequency of 48 kHz
+#define halfTimeOfTheWave 6 // Half time of the wave cycle (20.8333 us @ 48kHz, so half is 10), corrected by Arduino processor (-4 us based in DuinoTag)
+// More info: http://j44industries.blogspot.com/2009/09/arduino-frequency-generation.html#more
+#define numberOfWavesInAPulse 30 // 600 us of pulse between 20 us (rounded) of wave
+
+
+// Byte of information to be transmitted when firing, after the header
+// A zero byte to start, 3 bytes for identifying player
+// 3 bytes for identifying type of weapon, a last byte for parity checking
+byte byteShooting[8];
+
 //Game parameters
 byte remainingImpacts = 4;
 #define timeOfInvulnerability 2000 //ms
@@ -112,6 +130,20 @@ void setup() {
   digitalWrite(pinFailureMotors,LOW);
   digitalWrite(pinFailureTurret,LOW);
   digitalWrite(pinFailureTotal,LOW);
+
+  // Defining the byteShooting
+  // Start after the header with a zero
+  byteShooting[0]=0;
+  // Identify player
+  byteShooting[1]=0;
+  byteShooting[2]=0;
+  byteShooting[3]=1;
+  // Identify weapon
+  byteShooting[4]=0;
+  byteShooting[5]=0;
+  byteShooting[6]=1;
+  // Parity check
+  byteShooting[7]=0;
   //Debugging
   Serial.begin(9600);
   lcd.begin(16,2);
@@ -139,10 +171,43 @@ void senseImpact(){
   //TODO
 }
 
+void sendPulse(byte length) {
+  // TODO add a pin as parameter for secondary fire
+  byte iForLenght = 0;
+  byte iForFrequency = 0;
+  while (iForLenght < length){ // lenght is the entire number of pulses
+    iForLenght++;
+    while (iForFrequency < numberOfWavesInAPulse){ // Generate waves during a pulse
+      iForFrequency++;
+      // Generates a square wave at carrier frequency
+      digitalWrite(pinShoot, HIGH);
+      delayMicroseconds(halfTimeOfTheWave);
+      digitalWrite(pinShoot, LOW);
+      delayMicroseconds(halfTimeOfTheWave);
+    }
+  }
+}
+
 void shoot(){
-  digitalWrite(pinShoot, HIGH);
-  recharging=true;
-  startingMillisOfShot=currentMillis;
+  // Header
+  sendPulse(4);
+  delayMicroseconds(space);
+
+  // Byte
+  for (byte n = 0; n < 7 ; n++){
+    if (byteShooting [n] == 1){
+      sendPulse(1);
+    }
+    sendPulse(1);
+    delayMicroseconds(space);
+  }
+
+  // Parity byte
+  if (byteShooting[7]==1){
+    sendPulse(1);
+  }
+  sendPulse(1);
+  delayMicroseconds(space);
 }
 
 void repair(){
@@ -155,9 +220,6 @@ void updateStates(){
   }
   //TODO: Remaining effects of impacts: FailureMotors and FailureTurret
 
-  if (currentMillis-startingMillisOfShot>=durationOfShot){
-    digitalWrite(pinShoot, LOW);
-  }
   if (recharging&&(currentMillis-startingMillisOfShot>=timeBetweenShots+durationOfShot)){
     recharging=false;
   }
@@ -204,6 +266,11 @@ void loop() {
 
   //Shot
   if(!recharging&&digitalRead(pinCommandShoot)==HIGH){
+    recharging=true;
+    startingMillisOfShot=currentMillis;
+  }
+
+  if(currentMillis-startingMillisOfShot<=durationOfShot){
     shoot();
   }
 
